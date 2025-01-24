@@ -6,43 +6,55 @@ from googleapiclient.http import MediaIoBaseUpload
 import io
 import json
 import os
+import pytz
+from datetime import datetime
+from google.oauth2 import service_account
 from dotenv import load_dotenv
-load_dotenv()
 
+# Carga las variables de entorno desde el archivo .env
+load_dotenv()
+# Crea una instancia de la aplicación Flask
 app = Flask(__name__)
+# Variable global para almacenar la conexión a la base de datos MongoDB
 db = None
 
-credenciales_json = os.environ["GOOGLE_APPLICATION_CREDENTIALS_JSON"]
+# Obtiene las credenciales de la cuenta de servicio de Google Cloud desde la variable de entorno
+credenciales_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
+# Variable global para almacenar el servicio de Google Drive autenticado
 servicio = None
 
-
-# Función para autenticar Google Drive
 def autenticar_drive():
     """
-    Autentica con Google Drive usando las credenciales de la variable de entorno.
+    Autentica en la API de Google Drive utilizando las credenciales proporcionadas
+    y devuelve un objeto de servicio para interactuar con la API.
     """
-    global servicio
-    if servicio is None:
-        # Parsear el JSON a un diccionario
-        credenciales_dict = json.loads(credenciales_json)
-        # Autenticar usando el diccionario
-        credenciales = service_account.Credentials.from_service_account_info(credenciales_dict)
-        # Construir el servicio de Google Drive
-        servicio = build('drive', 'v3', credentials=credenciales)
-        print("Servicio de Google Drive autenticado.")
+    SCOPES = ['https://www.googleapis.com/auth/drive']
+
+
+    credenciales_dict = json.loads(credenciales_json)
+    credenciales = service_account.Credentials.from_service_account_info(
+        credenciales_dict, scopes=SCOPES
+    )
+    servicio = build('drive', 'v3', credentials=credenciales)
     return servicio
 
 
-# Obtener servicio autenticado de Google Drive
 def obtener_servicio_drive():
+    """
+    Obtiene el servicio de Google Drive autenticado. Si aún no se ha autenticado,
+    llama a la función `autenticar_drive()`.
+    """
     global servicio
     if servicio is None:
         servicio = autenticar_drive()
     return servicio
 
 
-# Inicializar la conexión a MongoDB
 def init_db():
+    """
+    Inicializa la conexión a la base de datos MongoDB utilizando la URI proporcionada
+    en la variable de entorno.
+    """
     global db
     try:
         churro = os.getenv("MONGODB_URI")
@@ -57,6 +69,20 @@ def init_db():
 
 # Crear una carpeta en Google Drive
 def crear_carpeta(servicio, nombre_carpeta, carpeta_padre_id=None):
+    """
+    Crea una nueva carpeta en Google Drive.
+
+    Args:
+        servicio: Objeto de servicio de Google Drive autenticado.
+        nombre_carpeta: Nombre de la nueva carpeta.
+        carpeta_padre_id: ID de la carpeta padre (opcional).
+
+    Returns:
+        str: ID de la carpeta creada.
+
+    Raises:
+        Exception: Si ocurre un error al crear la carpeta.
+    """
     try:
         metadatos_carpeta = {
             'name': nombre_carpeta,
@@ -73,8 +99,23 @@ def crear_carpeta(servicio, nombre_carpeta, carpeta_padre_id=None):
         raise
 
 
-# Crear estructura completa en Google Drive
 def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos):
+    """
+    Crea una estructura jerárquica de carpetas en Google Drive y registra la información en MongoDB.
+
+    Args:
+        servicio: Objeto de servicio de Google Drive autenticado.
+        nombre_principal: Nombre de la carpeta principal.
+        cantidad_albumes: Número de subcarpetas de tipo "album" a crear.
+        cantidad_marcos: Número de subcarpetas de tipo "marco" a crear.
+        cantidad_negativos: Número de subcarpetas de tipo "negativo" a crear.
+
+    Returns:
+        dict: Diccionario que representa la estructura creada, incluyendo IDs de carpetas.
+
+    Raises:
+        Exception: Si ocurre un error al crear la estructura.
+    """
     try:
         estructura_creada = {
             "nRegistro": nombre_principal,
@@ -156,20 +197,32 @@ def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cant
     except Exception as e:
         print(f"Error al crear estructura en Google Drive: {e}")
         raise
+# Zona horaria de España
+spain_timezone = pytz.timezone("Europe/Madrid")
 
 
-# Crear estructura en MongoDB
 def crear_estructura_en_mongodb(db, estructura_creada):
+    """
+    Inserta la información de la estructura creada en la base de datos MongoDB.
+
+    Args:
+        db: Objeto de conexión a la base de datos MongoDB.
+        estructura_creada: Diccionario que representa la estructura creada.
+
+    Returns:
+        bool: True si la inserción fue exitosa, False en caso contrario.
+    """
     try:
         if db is None:
             print("Error: Conexión a MongoDB no inicializada.")
             return False
-
         print("Datos a insertar en MongoDB:", estructura_creada)
+
         lote = {
             "nRegistro": estructura_creada["nRegistro"],
             "carpeta_principal_id": estructura_creada["carpeta_principal_id"],
-            "subCarpetas": []
+            "subCarpetas": [],
+            "created_at": datetime.now(spain_timezone)
         }
         lote_id = db.lotes.insert_one(lote).inserted_id
         print(f"Lote insertado con ID: {lote_id}")
@@ -179,8 +232,9 @@ def crear_estructura_en_mongodb(db, estructura_creada):
                 "nRegistro": subcarpeta["nRegistro"],
                 "id_subcarpeta": subcarpeta["id_subcarpeta"],
                 "tipo": subcarpeta["tipo"],
-                "subCarpetasInternas": []
-            }
+                "subCarpetasInternas": [],
+                "created_at": datetime.now(spain_timezone)
+                                        }
             subcarpeta_id = db.subcarpetas.insert_one(subcarpeta_doc).inserted_id
             print(f"Subcarpeta insertada con ID: {subcarpeta_id}")
 
@@ -194,7 +248,8 @@ def crear_estructura_en_mongodb(db, estructura_creada):
                     "nRegistro": subcarpeta_interna["nRegistro"],
                     "subcarpetas_internas_id": subcarpeta_interna["subcarpetas_internas_id"],
                     "tipo": subcarpeta_interna["tipo"],
-                    "imagenes": subcarpeta_interna["imagenes"]
+                    "imagenes": subcarpeta_interna["imagenes"],
+                    "created_at": datetime.now(spain_timezone) 
                 }
                 db.subcarpetainternas.insert_one(subcarpeta_interna_doc)
 
@@ -214,11 +269,12 @@ def obtener_id_subcarpeta_interna(db, nRegistro):
     """
     Obtiene el ID de una subcarpeta interna dentro de una subcarpeta específica desde MongoDB.
 
-    :param db: Conexión a la base de datos MongoDB.
-    :param nRegistro: Identificador único de la estructura (por ejemplo, "0002-CO").
-    :param tipo_carpeta: Tipo de la subcarpeta (por ejemplo, "M", "O", "S", o "R").
-    :param tipo_subcarpeta_interna: Tipo de la subcarpeta interna (por ejemplo, "Z", "T", "A", MC, NG).
-    :return: ID de la subcarpeta interna si existe, None si no se encuentra.
+    Args:
+        db: Objeto de conexión a la base de datos MongoDB.
+        nRegistro: Identificador único de la estructura.
+
+    Returns:
+        str: ID de la subcarpeta interna, o None si no se encuentra.
     """
     # Validar entradas
     if not nRegistro:
@@ -249,15 +305,19 @@ def obtener_id_subcarpeta_interna(db, nRegistro):
         print(f"Error al buscar en la base de datos: {e}")
         return None
     
+
 # Función para subir múltiples archivos
 def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id):
     """
     Sube múltiples archivos a una carpeta específica en Google Drive.
 
-    :param servicio: Objeto autenticado de la API de Google Drive.
-    :param archivos: Lista de archivos recibidos (por ejemplo, desde request.files en Flask).
-    :param id_carpeta_destino: ID de la carpeta en Google Drive donde se subirán los archivos.
-    :return: Lista con los resultados de las subidas (nombre e ID de cada archivo).
+    Args:
+        servicio: Objeto de servicio de Google Drive autenticado.
+        archivos: Lista de archivos a subir.
+        subcarpetas_internas_id: ID de la carpeta de destino.
+
+    Returns:
+        list: Lista de IDs de los archivos subidos.
     """
     resultados = []
 
@@ -288,19 +348,27 @@ def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id):
     print("Subida de multiples archivos exitosa")
     return resultados
 
+
 # Actualizar la colección subcarpetainternas en MongoDB
 def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes):
     """
-    Actualiza la colección subcarpetainternas con los IDs de las imágenes subidas.
+    Actualiza la colección "subcarpetainternas" en MongoDB con los IDs de las imágenes subidas.
 
-    :param db: Conexión a la base de datos MongoDB.
-    :param nRegistro: Identificador único de la estructura (por ejemplo, "0002-CO").
-    :param ids_imagenes: Lista de IDs de las imágenes subidas.
+    Args:
+        db: Objeto de conexión a la base de datos MongoDB.
+        nRegistro: Identificador único de la estructura.
+        ids_imagenes: Lista de IDs de las imágenes subidas.
     """
     try:
+         # Crear una lista de objetos con id_imagen y created_at
+        imagenes_con_timestamp = [
+            {"id_imagen": id_imagen, "created_at": datetime.now(spain_timezone)}
+            for id_imagen in ids_imagenes
+        ]
+
         resultado = db['subcarpetainternas'].update_one(
             {"nRegistro": nRegistro},
-            {"$push": {"imagenes": {"$each": ids_imagenes}}}
+            {"$push": {"imagenes": {"$each": imagenes_con_timestamp}}}
         )
         if resultado.modified_count > 0:
             print(f"Imágenes actualizadas en MongoDB para nRegistro: {nRegistro}")
@@ -350,7 +418,6 @@ def crear_estructura_endpoint():
         return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
 
 
-# Endpoint para subir múltiples archivos
 @app.route('/subir_archivos', methods=['POST'])
 def subir_archivos():
     """
@@ -377,6 +444,8 @@ def subir_archivos():
         # Subir los archivos
         ids_imagenes = subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id)
 
+        # for carpetita in subcarpetas_internas_id:
+
         # Actualizar la colección subcarpetainternas en MongoDB
         actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes)
 
@@ -391,4 +460,4 @@ def subir_archivos():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')
