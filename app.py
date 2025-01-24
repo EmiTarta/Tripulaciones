@@ -380,6 +380,9 @@ def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes):
 
 init_db()
 
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({"mensaje": "API activa y funcionando"}), 200
 
 @app.route('/crear_estructura_completa', methods=['GET'])
 def crear_estructura_endpoint():
