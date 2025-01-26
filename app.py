@@ -334,45 +334,96 @@ def crear_estructura_en_mongodb(db, estructura_creada):
         print(f"Error al crear la estructura en MongoDB: {e}")
         return False
 
-def obtener_id_subcarpeta_interna(db, nRegistro):
+
+def obtener_id_subcarpeta(db, nRegistro):
     """
-    Obtiene el ID de una subcarpeta interna dentro de una subcarpeta específica desde MongoDB.
+    Obtiene el ID del documento correcto dependiendo de la colección (subcarpetas o subcarpetainternas).
 
     Args:
         db: Objeto de conexión a la base de datos MongoDB.
         nRegistro: Identificador único de la estructura.
 
     Returns:
-        str: ID de la subcarpeta interna, o None si no se encuentra.
+        str: Valor del campo solicitado ('id_subcarpeta' o 'subcarpetas_internas_id'), o None si no se encuentra.
     """
     # Validar entradas
     if not nRegistro:
         print("Error: Faltan parámetros necesarios (nRegistro)")
         return None
+    
+    # Determinar la colección según el formato de nRegistro
+    if "-" in nRegistro[8:]:  # Si hay algo después del octavo carácter, es una subcarpeta interna
+        coleccion = "subcarpetainternas"
+        campo = "subcarpetas_internas_id"  # Campo a buscar en subcarpetainternas
+    else:  # Si no, es una subcarpeta normal
+        coleccion = "subcarpetas"
+        campo = "id_subcarpeta"  # Campo a buscar en subcarpetas
 
     try:
         # Realizar la consulta en la colección 'subcarpetainternas'
-        resultado = db['subcarpetainternas'].find_one(
+        resultado = db[coleccion].find_one(
             {
                 "nRegistro": nRegistro,
             },
             {
-                "subcarpetas_internas_id": 1,  # Solo devuelve el campo subcarpetas_internas_id
+                campo: 1,  # Solo devuelve el campo subcarpetas_internas_id
                 "_id": 0  # Excluye el campo _id que MongoDB devuelve por defecto
             }
         )
 
         # Procesar el resultado
-        if resultado:
-            print(f"Subcarpeta interna encontrada: {resultado['subcarpetas_internas_id']}")
-            return resultado['subcarpetas_internas_id']
+        if resultado and campo in resultado:
+            print(f"{campo} encontrado en colección '{coleccion}': {resultado[campo]}")
+            return resultado[campo]
         else:
-            print(f"No se encontró una subcarpeta interna para nRegistro: {nRegistro}")
+            print(f"No se encontró el campo '{campo}' para nRegistro: {nRegistro} en la colección '{coleccion}'")
             return None
         
     except Exception as e:
         print(f"Error al buscar en la base de datos: {e}")
         return None
+
+
+
+# def obtener_id_subcarpeta_interna(db, nRegistro):
+#     """
+#     Obtiene el ID de una subcarpeta interna dentro de una subcarpeta específica desde MongoDB.
+
+#     Args:
+#         db: Objeto de conexión a la base de datos MongoDB.
+#         nRegistro: Identificador único de la estructura.
+
+#     Returns:
+#         str: ID de la subcarpeta interna, o None si no se encuentra.
+#     """
+#     # Validar entradas
+#     if not nRegistro:
+#         print("Error: Faltan parámetros necesarios (nRegistro)")
+#         return None
+
+#     try:
+#         # Realizar la consulta en la colección 'subcarpetainternas'
+#         resultado = db['subcarpetainternas'].find_one(
+#             {
+#                 "nRegistro": nRegistro,
+#             },
+#             {
+#                 "subcarpetas_internas_id": 1,  # Solo devuelve el campo subcarpetas_internas_id
+#                 "_id": 0  # Excluye el campo _id que MongoDB devuelve por defecto
+#             }
+#         )
+
+#         # Procesar el resultado
+#         if resultado:
+#             print(f"Subcarpeta interna encontrada: {resultado['subcarpetas_internas_id']}")
+#             return resultado['subcarpetas_internas_id']
+#         else:
+#             print(f"No se encontró una subcarpeta interna para nRegistro: {nRegistro}")
+#             return None
+        
+#     except Exception as e:
+#         print(f"Error al buscar en la base de datos: {e}")
+#         return None
     
 
 def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
@@ -561,11 +612,34 @@ def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes, classifications=No
     except Exception as e:
         print(f"Error al actualizar imágenes en MongoDB: {e}")
 
+######################################################################################################
+def configurar_permisos(servicio, archivo_id):
+    """
+    Configura los permisos para permitir que cualquier persona con el enlace tenga acceso de lectura.
+
+    :param servicio: Objeto autenticado de la API de Google Drive.
+    :param archivo_id: ID del archivo o carpeta en Google Drive.
+    """
+    try:
+        permiso = {
+            'type': 'anyone',  # Cualquiera con el enlace
+            'role': 'reader'   # Permisos de lectura
+        }
+        servicio.permissions().create(fileId=archivo_id, body=permiso).execute()
+        print(f"Permisos configurados para el archivo/carpeta: {archivo_id}")
+    except Exception as e:
+        print(f"Error al configurar permisos: {e}")
+        raise
+
+######################################################################################################
+
 init_db()
 
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({"mensaje": "API activa y funcionando"}), 200
+
+
 
 @app.route('/crear_estructura_completa', methods=['POST'])
 def crear_estructura_endpoint():
@@ -591,8 +665,6 @@ def crear_estructura_endpoint():
         estructura_creada = crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos)
         print("Estructura creada para MongoDB:", estructura_creada)
 
-
-        #########################################################
         # Obtener la subcarpeta con el nombre `nRegistro + "-F"`
         nRegistro = nombre_principal
         subcarpeta_f_id = None
@@ -650,13 +722,14 @@ def subir_archivos():
         if not nRegistro:
             return jsonify({"error": "Se requiere el ID de la carpeta destino"}), 400
         
-
+        # Inicializar classifications para evitar errores
+        classifications = []
             # Clasificación de imágenes
         if nRegistro.split("-")[2] == "S":
             classifications = clasificacion(archivos)  
 
         # Obtener el ID de dicha carpeta
-        subcarpetas_internas_id = obtener_id_subcarpeta_interna(db, nRegistro)
+        subcarpetas_internas_id = obtener_id_subcarpeta(db, nRegistro)
         if not subcarpetas_internas_id:
             return jsonify({"error": f"No se encontró subcarpetas_internas_id para nRegistro: {nRegistro}"}), 404
         
@@ -697,6 +770,59 @@ def subir_archivos():
     except Exception as e:
         print(f"Error en el endpoint: {e}")
         return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
+
+
+
+@app.route('/listar_archivos', methods=['GET'])
+def listar_archivos():
+    """
+    Lista los archivos de una carpeta específica en Google Drive.
+    """
+    try:
+        # Obtener el ID de la carpeta desde los parámetros de la solicitud
+        nRegistro = request.args.get('nRegistro')
+        if not nRegistro:
+            return jsonify({"error": "Se requiere el ID de la carpeta (nRegistro)"}), 400
+        
+        # Obtener el ID Drive de dicha carpeta nRegistro
+        subcarpetas_internas_id = obtener_id_subcarpeta(db, nRegistro)
+        if not subcarpetas_internas_id:
+            return jsonify({"error": f"No se encontró subcarpetas_internas_id para nRegistro: {nRegistro}"}), 404
+
+        # Obtener el servicio autenticado de Google Drive
+        servicio = obtener_servicio_drive()
+
+        # Listar los archivos dentro de la carpeta
+        resultados = servicio.files().list(
+            q=f"'{subcarpetas_internas_id}' in parents and trashed = false",
+            fields="files(id, name, mimeType, webViewLink, webContentLink)"
+        ).execute()
+
+        archivos = resultados.get('files', [])
+
+        # Estructurar la respuesta en un formato amigable para React
+        respuesta = []
+        for archivo in archivos:
+            # Configurar permisos de lectura para "anyone with the link"
+            configurar_permisos(servicio, archivo.get('id'))
+            respuesta.append({
+                "id": archivo.get('id'),
+                "nombre": archivo.get('name'),
+                "tipo": archivo.get('mimeType'),
+                "link_visualizacion": archivo.get('webViewLink'),  # Para vista previa
+                "link_descarga": archivo.get('webContentLink')  # Para descargar
+            })
+
+        return jsonify({
+            "mensaje": "Archivos listados con éxito",
+            "archivos": respuesta, 
+            "success" : True
+        }), 200
+
+    except Exception as e:
+        print(f"Error al listar archivos: {e}")
+        return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
+
 
 
 if __name__ == '__main__':
