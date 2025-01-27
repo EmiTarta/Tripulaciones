@@ -402,7 +402,7 @@ def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id, nRegis
         list: Lista de IDs de los archivos subidos.
     """
     resultados = []
-    contador = 1
+    # contador = 1
 
     for archivo in archivos:
         try:
@@ -411,11 +411,9 @@ def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id, nRegis
             contenido_archivo = archivo.read()
             mime_type = archivo.content_type  # Tipo MIME del archivo (por ejemplo, 'image/jpeg')
 
-            nombre_archivo =  f"{nRegistro}-{contador:03}"
-
             # Preparar el archivo para subirlo a Google Drive
             media = MediaIoBaseUpload(io.BytesIO(contenido_archivo), mimetype=mime_type)
-            
+            # nombre_archivo =  f"{nRegistro}-{contador:03}"
             metadatos_archivo = {
                 'name': nombre_archivo,
                 'parents': [subcarpetas_internas_id]
@@ -502,7 +500,7 @@ def clasificacion(archivos):
                 classifications.append("Archivo vacío")
                 continue
 
-            # Crear un objeto BytesIO en memoria
+            # Usar una copia del archivo para clasificar
             archivo_memoria = BytesIO(contenido_archivo)
 
             # Clasificar la imagen utilizando el objeto en memoria
@@ -517,7 +515,10 @@ def clasificacion(archivos):
             except Exception as e:
                 print(f"Error durante la clasificación de {nombre_archivo}: {e}")
                 classifications.append("Error durante clasificación")
-
+            
+            # Volver a colocar el puntero al inicio para que esté listo para la subida
+            archivo.stream.seek(0)
+            
         except Exception as e:
             print(f"Error al procesar el archivo '{archivo.filename}': {e}")
             classifications.append("Error general")
@@ -722,6 +723,15 @@ def subir_archivos():
         if not nRegistro:
             return jsonify({"error": "Se requiere el ID de la carpeta destino"}), 400
         
+        # Iterar sobre los archivos y extraer el nombre original
+        contador = 1
+        for archivo in archivos:
+            # Cambio de nombre
+            nuevo_nombre = f"{nRegistro}-{contador:03}"
+            print(f"Nuevo nombre del archivo: {nuevo_nombre}")
+            contador += 1
+
+
         # Inicializar classifications para evitar errores
         classifications = []
             # Clasificación de imágenes
@@ -747,7 +757,7 @@ def subir_archivos():
                 if isinstance(archivo, dict) and "id" in archivo and "nombre" in archivo:
                     ids_y_nombres.append({
                         "id": archivo["id"],
-                        "nombre": archivo["nombre"] + "-" + classifications[indice]
+                        "nombre": nuevo_nombre + "-" + classifications[indice]
                     })
                 else:
                     print(f"Archivo con formato inesperado: {archivo}")
@@ -755,11 +765,11 @@ def subir_archivos():
             for archivo in archivos_subidos:
                     ids_y_nombres.append({
                         "id": archivo["id"],
-                        "nombre": archivo["nombre"]
+                        "nombre": nuevo_nombre
                     })
         
         # Actualizar la colección subcarpetainternas en MongoDB
-        actualizar_imagenes_en_mongo(db, nRegistro, ids_y_nombres, classifications)
+        actualizar_imagenes_en_mongo(db, nRegistro, ids_y_nombres)
 
         # Iterar sobre los archivos para renombrarlos
         for archivo in ids_y_nombres:
@@ -812,11 +822,11 @@ def listar_archivos():
             fields="files(id, name, mimeType, webViewLink, webContentLink)"
         ).execute()
 
-        archivos = resultados.get('files', [])
+        archivados = resultados.get('files', [])
 
         # Estructurar la respuesta en un formato amigable para React
         respuesta = []
-        for archivo in archivos:
+        for archivo in archivados:
             # Configurar permisos de lectura para "anyone with the link"
             configurar_permisos(servicio, archivo.get('id'))
             respuesta.append({
