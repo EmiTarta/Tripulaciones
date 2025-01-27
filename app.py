@@ -34,49 +34,7 @@ REPLICATE_API_TOKEN = os.environ["REPLICATE_API_TOKEN"]
 # Variable global para almacenar el servicio de Google Drive autenticado
 servicio = None
 
-prompt = "Analyze the provided image for significant damage. Return ONLY 'AI' or 'PS'. NOT include any other text or explanations. Classification Criteria:* Black and White Images: Exercise extra caution when evaluating damage.* Buildings: If the image depicts buildings with extensive structural damage (perimeter or local gaps significantly impacting the structure), return 'PS'.* Emphasis the Analyze the image to find people: Do NOT get confused, they must be images of people in different places. Damage Assessment (Prioritized by Impact): PS. Face (if present): Damage affecting the face has the highest priority. Return PS if: * Damage significantly distorts facial features (e.g., missing eye, distorted nose/mouth). * Large obscuring gaps or extreme discoloration hinder face identification.2. Image Composition (Perimeter Gaps): Evaluate loss of information at the image edges. Return PS if perimeter gaps severely compromise the image composition. 3.Local Gaps: Evaluate loss of information within the image. Return PS if multiple large local gaps obscure significant details, especially facial features. 4.Smudges: Unwanted marks that appear on the surface of the image, Return PS. Return AI if the damage is minor and does NOT significantly affect the face (if present) or the overall composition. Examples of Minor Damage (Return AI):* Scratches (especially on edges)* Small Scattered stains NOT affecting the FACE* Slight discoloration* Minor wrinkles* Missing corner NOT affecting the FACE. Examples: Eye erased by a gap: PS. Large stain covering PART of the FACE: PS. Slight discoloration and small wrinkle: AI. More Discoloration and more wrinkles(barely distinguishable image): PS. IMPORTANT REMEMBER: Return ONLY 'AI' or 'PS'. NOT include any other text or explanations."
-
-# Funcion de clasificador
-def classification_llava(img_bytes):
-    """
-    Clasifica una imagen a partir de un objeto en memoria (BytesIO o bytes).
-
-    :param img_bytes: Contenido de la imagen en formato bytes o BytesIO.
-    :return: Resultado de la clasificación.
-    """
-    # Si el input es bytes, conviértelo en BytesIO
-    if isinstance(img_bytes, bytes):
-        img_stream = BytesIO(img_bytes)
-    elif hasattr(img_bytes, "read"):
-        img_stream = img_bytes
-    else:
-        raise ValueError("El argumento img_bytes debe ser bytes o un objeto similar a BytesIO.")
-
-    # Crear el diccionario de entrada
-    input_data = {
-        "image": img_stream,
-        "prompt": prompt
-    }
-
-    events = []
-    # Realizar la clasificación con replicate
-    try:
-        for event in replicate.stream(
-            "yorickvp/llava-13b:80537f9eead1a5bfa72d5ac6ea6414379be41d4d4f6679fd776e9535d1eb58bb",
-            input=input_data
-        ):
-            events.append(event.data)
-
-        output =  " ".join(events)
-        output = output.replace("{}","")
-        output = output.replace(" ","")
-
-        return output 
-    
-    except Exception as e:
-        print(f"Error al procesar la imagen: {e}")
-        return {"error": str(e)}
-    
+prompt =  "Analyze the provided image for significant damage. Return ONLY a 0 or a 1. NOT include any other text or explanations. Classification Criteria:*   Black and White Images: Exercise extra caution when evaluating damage.*   Buildings: If the image depicts buildings with extensive structural damage (perimeter or local gaps significantly impacting the structure), return 1.*   Emphasis the Analyze the image to find people: Do NOT get confused, they must be images of people in different places. Damage Assessment (Prioritized by Impact): 1.  Face (if present): Damage affecting the face has the highest priority. Return 1 if:    *   Damage significantly distorts facial features (e.g., missing eye, distorted nose/mouth).    *   Large obscuring gaps or extreme discoloration hinder face identification.2.  Image Composition (Perimeter Gaps): Evaluate loss of information at the image edges. Return 1 if perimeter gaps severely compromise the image composition.  3.Local Gaps: Evaluate loss of information within the image. Return 1 if multiple large local gaps obscure significant details, especially facial features.  4.Smudges: Unwanted marks that appear on the surface of the image, Return 1. Return 0 if the damage is minor and does NOT significantly affect the face (if present) or the overall composition. Examples of Minor Damage (Return 0):*   Scratches (especially on edges)*   Small Scattered stains NOT affecting the FACE*   Slight discoloration*   Minor wrinkles*   Missing corner NOT affecting the FACE. Examples: Eye erased by a gap: 1.Large stain covering PART of the FACE: 1. Slight discoloration and small wrinkle: 0.More Discoloration and more wrinkles(barely distinguishable image): 1.  IMPORTANT REMEMBER: Return ONLY a 0 or a 1. NOT include any other text or explanations."
 
 
 def autenticar_drive():
@@ -382,48 +340,6 @@ def obtener_id_subcarpeta(db, nRegistro):
     except Exception as e:
         print(f"Error al buscar en la base de datos: {e}")
         return None
-
-
-
-# def obtener_id_subcarpeta_interna(db, nRegistro):
-#     """
-#     Obtiene el ID de una subcarpeta interna dentro de una subcarpeta específica desde MongoDB.
-
-#     Args:
-#         db: Objeto de conexión a la base de datos MongoDB.
-#         nRegistro: Identificador único de la estructura.
-
-#     Returns:
-#         str: ID de la subcarpeta interna, o None si no se encuentra.
-#     """
-#     # Validar entradas
-#     if not nRegistro:
-#         print("Error: Faltan parámetros necesarios (nRegistro)")
-#         return None
-
-#     try:
-#         # Realizar la consulta en la colección 'subcarpetainternas'
-#         resultado = db['subcarpetainternas'].find_one(
-#             {
-#                 "nRegistro": nRegistro,
-#             },
-#             {
-#                 "subcarpetas_internas_id": 1,  # Solo devuelve el campo subcarpetas_internas_id
-#                 "_id": 0  # Excluye el campo _id que MongoDB devuelve por defecto
-#             }
-#         )
-
-#         # Procesar el resultado
-#         if resultado:
-#             print(f"Subcarpeta interna encontrada: {resultado['subcarpetas_internas_id']}")
-#             return resultado['subcarpetas_internas_id']
-#         else:
-#             print(f"No se encontró una subcarpeta interna para nRegistro: {nRegistro}")
-#             return None
-        
-#     except Exception as e:
-#         print(f"Error al buscar en la base de datos: {e}")
-#         return None
     
 
 def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
@@ -521,6 +437,54 @@ def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id, nRegis
     return resultados
 
 
+# Funcion de clasificador
+def classification_llava(img_bytes):
+    """
+    Clasifica una imagen a partir de un objeto en memoria (BytesIO o bytes).
+
+    :param img_bytes: Contenido de la imagen en formato bytes o BytesIO.
+    :return: Resultado de la clasificación.
+    """
+    # Si el input es bytes, conviértelo en BytesIO
+    if isinstance(img_bytes, bytes):
+        img_stream = BytesIO(img_bytes)
+    elif hasattr(img_bytes, "read"):
+        img_stream = img_bytes
+    else:
+        raise ValueError("El argumento img_bytes debe ser bytes o un objeto similar a BytesIO.")
+
+    # Crear el diccionario de entrada
+    input_data = {
+        "image": img_stream,
+        "prompt": prompt
+    }
+
+    events = []
+    # Realizar la clasificación con replicate
+    try:
+        for event in replicate.stream(
+            "yorickvp/llava-v1.6-mistral-7b:19be067b589d0c46689ffa7cc3ff321447a441986a7694c01225973c2eafc874",
+            input=input_data
+        ):
+            events.append(event.data)
+
+        output =  " ".join(events)
+        output = output.replace("{}","")
+        output = output.replace(" ","")
+
+        # Reemplazar 0 por "IA" y 1 por "PS"
+        if output == "0":
+            return "IA"
+        elif output == "1":
+            return "PS"
+        else:
+            raise ValueError(f"Valor inesperado en la salida: {output}")
+    
+    except Exception as e:
+        print(f"Error al procesar la imagen: {e}")
+        return {"error": str(e)}
+
+
 # Funcion de Clasificacion
 def clasificacion(archivos):
     classifications = []
@@ -612,7 +576,6 @@ def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes, classifications=No
     except Exception as e:
         print(f"Error al actualizar imágenes en MongoDB: {e}")
 
-######################################################################################################
 def configurar_permisos(servicio, archivo_id):
     """
     Configura los permisos para permitir que cualquier persona con el enlace tenga acceso de lectura.
@@ -631,7 +594,6 @@ def configurar_permisos(servicio, archivo_id):
         print(f"Error al configurar permisos: {e}")
         raise
 
-######################################################################################################
 
 init_db()
 
@@ -826,5 +788,4 @@ def listar_archivos():
 
 
 if __name__ == '__main__':
-    # port = int(os.getenv("PORT", 8080))
     app.run(debug=True, host='0.0.0.0', port=8080)
