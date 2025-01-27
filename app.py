@@ -29,7 +29,7 @@ CORS(app, origins=['http://localhost:5173'])
 
 # Obtiene las credenciales de la cuenta de servicio de Google Cloud desde la variable de entorno
 credenciales_json = os.getenv('GOOGLE_APPLICATION_CREDENTIALS_JSON')
-REPLICATE_API_TOKEN = os.environ["REPLICATE_API_TOKEN"]               
+REPLICATE_API_TOKEN = os.environ["REPLICATE_API_TOKEN"]
 
 # Variable global para almacenar el servicio de Google Drive autenticado
 servicio = None
@@ -355,6 +355,7 @@ def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
     Returns:
         dict: Datos del archivo subido (ID y nombre).
     """
+    contador = 1
     try:
         # Extraer información del archivo recibido
         nombre_archivo = archivo.filename
@@ -362,7 +363,7 @@ def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
         mime_type = archivo.content_type  # Tipo MIME del archivo (por ejemplo, 'image/jpeg')
 
         # Generar nombre único para el archivo
-        nombre_archivo = f"{nRegistro}-F-{nombre_archivo}"
+        nombre_archivo = f"{nRegistro}-F-{contador:03}"
 
         # Preparar el archivo para subirlo a Google Drive
         media = MediaIoBaseUpload(io.BytesIO(contenido_archivo), mimetype=mime_type)
@@ -524,7 +525,6 @@ def clasificacion(archivos):
     return classifications
 
 
-
 # Actualizar la colección subcarpetainternas en MongoDB
 def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes, classifications=None):
     """
@@ -575,6 +575,44 @@ def actualizar_imagenes_en_mongo(db, nRegistro, ids_imagenes, classifications=No
 
     except Exception as e:
         print(f"Error al actualizar imágenes en MongoDB: {e}")
+
+
+
+def renombrar_archivo_drive(servicio, file_id, new_name):
+    """
+    Renombra un archivo en Google Drive utilizando su ID.
+
+    Args:
+        servicio: Objeto autenticado del servicio de Google Drive.
+        file_id: ID del archivo que se desea renombrar.
+        new_name: Nuevo nombre que se le asignará al archivo.
+
+    Returns:
+        dict: Información del archivo renombrado (id y nombre actualizado), o None si falla.
+    """
+    try:
+        # Metadatos para actualizar el nombre del archivo
+        file_metadata = {
+            "name": new_name
+        }
+
+        # Llamada a la API de Google Drive para actualizar el nombre
+        archivo_renombrado = servicio.files().update(
+            fileId=file_id,
+            body=file_metadata,
+            fields="id, name"
+        ).execute()
+
+        print(f"Archivo renombrado: {archivo_renombrado['name']} (ID: {archivo_renombrado['id']})")
+        return {
+            "id": archivo_renombrado["id"],
+            "nombre": archivo_renombrado["name"]
+        }
+
+    except Exception as e:
+        print(f"Error al renombrar el archivo con ID {file_id}: {e}")
+        return None
+
 
 def configurar_permisos(servicio, archivo_id):
     """
@@ -723,12 +761,26 @@ def subir_archivos():
         # Actualizar la colección subcarpetainternas en MongoDB
         actualizar_imagenes_en_mongo(db, nRegistro, ids_y_nombres, classifications)
 
+        # Iterar sobre los archivos para renombrarlos
+        for archivo in ids_y_nombres:
+            if "id" in archivo and "nombre" in archivo:
+                try:
+                    renombrado = renombrar_archivo_drive(servicio, archivo["id"], archivo["nombre"])
+                    if renombrado:
+                        print(f"Archivo renombrado con éxito: {renombrado}")
+                    else:
+                        print(f"No se pudo renombrar el archivo con ID {archivo['id']}")
+                except Exception as e:
+                    print(f"Error al renombrar el archivo con ID {archivo['id']}: {e}")
+            else:
+                print(f"Archivo con datos incompletos: {archivo}")
+
         return jsonify({
             "mensaje": "Archivos subidos con éxito",
             "archivos_subidos": ids_y_nombres
 
         }), 200
-
+        
     except Exception as e:
         print(f"Error en el endpoint: {e}")
         return jsonify({"error": f"Error interno del servidor: {str(e)}"}), 500
