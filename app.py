@@ -342,7 +342,7 @@ def obtener_id_subcarpeta(db, nRegistro):
         return None
     
 
-def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
+def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro, db):
     """
     Sube un archivo específico a una carpeta de Google Drive.
 
@@ -360,7 +360,7 @@ def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
         # Extraer información del archivo recibido
         nombre_archivo = archivo.filename
         contenido_archivo = archivo.read()
-        mime_type = archivo.content_type  # Tipo MIME del archivo (por ejemplo, 'image/jpeg')
+        mime_type = archivo.content_type  # Tipo MIME del archivo
 
         # Generar nombre único para el archivo
         nombre_archivo = f"{nRegistro}-F-{contador:03}"
@@ -376,6 +376,29 @@ def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro):
         archivo_subido = servicio.files().create(body=metadatos_archivo, media_body=media, fields='id').execute()
         archivo_id = archivo_subido.get('id')
         print(f"Archivo subido: {nombre_archivo} (ID: {archivo_id})")
+        
+        try:
+            pdf_con_timestamp = {
+                "id_pdf": archivo_id,
+                "created_at": datetime.now(spain_timezone)  # Usar timezone si es necesario, como spain_timezone
+            }
+
+            # Actualizar en la colección "subcarpetainternas"
+            resultado = db['subcarpetas'].update_one(
+                {"nRegistro": nRegistro},  # Filtrar por nRegistro
+                {"$set": {"pdf": pdf_con_timestamp}}  # Actualizar o insertar el PDF
+            )
+
+            # Verificar resultado de la operación en MongoDB
+            if resultado.matched_count == 0:
+                print(f"[ERROR] No se encontró la carpeta para nRegistro: {nRegistro}")
+            elif resultado.modified_count > 0:
+                print(f"[SUCCESS] PDF actualizado en MongoDB para nRegistro: {nRegistro}")
+            else:
+                print(f"[INFO] No se modificó el documento para nRegistro: {nRegistro}")
+        except Exception as e:
+            print(f"Error al actualizar MongoDB: {e}")
+            return None
 
         return {
             'id': archivo_id,
@@ -518,7 +541,7 @@ def clasificacion(archivos):
             
             # Volver a colocar el puntero al inicio para que esté listo para la subida
             archivo.stream.seek(0)
-            
+
         except Exception as e:
             print(f"Error al procesar el archivo '{archivo.filename}': {e}")
             classifications.append("Error general")
@@ -658,7 +681,7 @@ def crear_estructura_endpoint():
 
         archivo = request.files.get('archivo')  # Archivo adjunto (foto)
 
-        if not nombre_principal or cantidad_albumes <= 0:
+        if not nombre_principal:
             return jsonify({"error": "Faltan parámetros requeridos o valores no válidos"}), 400
 
         servicio = obtener_servicio_drive()
@@ -679,7 +702,7 @@ def crear_estructura_endpoint():
 
         # Subir el archivo a la subcarpeta '-F'
         if archivo:
-            resultado_subida = subir_archivo(servicio, archivo, subcarpeta_f_id, nRegistro)
+            resultado_subida = subir_archivo(servicio, archivo, subcarpeta_f_id, nRegistro, db)
             print("Archivo subido a la subcarpeta '-F':", resultado_subida)
         else:
             return jsonify({"error": "No se proporcionó un archivo para subir"}), 400
