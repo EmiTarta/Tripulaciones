@@ -113,7 +113,7 @@ def crear_carpeta(servicio, nombre_carpeta, carpeta_padre_id=None):
         raise
 
 
-def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos):
+def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos, cantidad_diapositivas, cantidad_fotos_sueltas):
     """
     Crea una estructura jerárquica de carpetas en Google Drive y registra la información en MongoDB.
 
@@ -123,6 +123,8 @@ def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cant
         cantidad_albumes: Número de subcarpetas de tipo "album" a crear.
         cantidad_marcos: Número de subcarpetas de tipo "marco" a crear.
         cantidad_negativos: Número de subcarpetas de tipo "negativo" a crear.
+        cantidad_dispositivas: Número de subcarpetas de tipo "diapositivas" a crear.
+        cantidad_fotos_sueltas: Número de subcarpetas de tipo "fotos_sueltas" a crear.
 
     Returns:
         dict: Diccionario que representa la estructura creada, incluyendo IDs de carpetas.
@@ -145,29 +147,15 @@ def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cant
         subcarpetas_main = ["M", "O", "S", "R", "F"]
         for tipo_subcarpeta in subcarpetas_main:
             n_registro_subcarpeta = f"{nombre_principal}-{tipo_subcarpeta}"
-            subcarpeta_id = crear_carpeta(servicio, n_registro_subcarpeta, carpeta_main_id)
-
-            # Inicializar subcarpetas internas solo para M, O, S
-            if tipo_subcarpeta in ["M", "O", "S"]:
+            subcarpeta_id = crear_carpeta(servicio, n_registro_subcarpeta, carpeta_main_id)            # Inicializar subcarpetas internas solo para M, S
+            
+            if tipo_subcarpeta in ["M"]:
                 subcarpeta = {
                     "nRegistro": n_registro_subcarpeta,
                     "id_subcarpeta": subcarpeta_id,
                     "tipo": tipo_subcarpeta,
                     "subcarpetas_internas": []
                 }
-
-                # Subcarpetas internas fijas
-                subcarpetas_fijas = ["Z", "D"]
-                for tipo_fija in subcarpetas_fijas:
-                    n_registro_fija = f"{n_registro_subcarpeta}-{tipo_fija}"
-                    subcarpeta_fija_id = crear_carpeta(servicio, n_registro_fija, subcarpeta_id)
-                    subcarpeta_interna = {
-                        "nRegistro": n_registro_fija,
-                        "subcarpetas_internas_id": subcarpeta_fija_id,
-                        "tipo": tipo_fija,
-                        "imagenes": []
-                    }
-                    subcarpeta["subcarpetas_internas"].append(subcarpeta_interna)
 
                 # Subcarpetas dinámicas
                 for i in range(1, cantidad_albumes + 1):
@@ -201,6 +189,120 @@ def crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cant
                         "tipo": "NG",
                         "imagenes": []
                     })
+                # Subcarpetas de diapositivas
+                for i in range(1, cantidad_diapositivas + 1):
+                    n_registro_diapositivas = f"{n_registro_subcarpeta}-P{i:02d}"
+                    diapositivas_id = crear_carpeta(servicio, n_registro_diapositivas, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_diapositivas,
+                        "subcarpetas_internas_id": diapositivas_id,
+                        "tipo": "P",
+                        "imagenes": []
+                    })
+                # Subcarpetas de diapositivas
+                for i in range(1, cantidad_fotos_sueltas + 1):
+                    n_registro_fotos_sueltas = f"{n_registro_subcarpeta}-Z{i:02d}"
+                    fotos_sueltas_id = crear_carpeta(servicio, n_registro_fotos_sueltas, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_fotos_sueltas,
+                        "subcarpetas_internas_id": fotos_sueltas_id,
+                        "tipo": "P",
+                        "imagenes": []
+                    })
+
+
+            elif tipo_subcarpeta in ["O"]:
+                subcarpeta = {
+                    "nRegistro": n_registro_subcarpeta,
+                    "id_subcarpeta": subcarpeta_id,
+                    "tipo": tipo_subcarpeta,
+                    "subcarpetas_internas": []
+                }
+                                # Subcarpetas dinámicas
+                for i in range(1, cantidad_albumes + 1):
+                    n_registro_album = f"{n_registro_subcarpeta}-A{i:02d}"
+                    album_id = crear_carpeta(servicio, n_registro_album, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_album,
+                        "subcarpetas_internas_id": album_id,
+                        "tipo": "A",
+                        "imagenes": []
+                    })
+
+            elif tipo_subcarpeta in ["S"]:
+                subcarpeta = {
+                    "nRegistro": n_registro_subcarpeta,
+                    "id_subcarpeta": subcarpeta_id,
+                    "tipo": tipo_subcarpeta,
+                    "subcarpetas_internas": []
+                }
+
+                # Subcarpetas dinámicas
+                for i in range(1, cantidad_albumes + 1):
+                    n_registro_album = f"{n_registro_subcarpeta}-A{i:02d}"
+                    album_id = crear_carpeta(servicio, n_registro_album, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_album,
+                        "subcarpetas_internas_id": album_id,
+                        "tipo": "A",
+                        "imagenes": []
+                    })
+
+                # Subcarpetas de marcos
+                for i in range(1, cantidad_marcos + 1):
+                    n_registro_marco = f"{n_registro_subcarpeta}-MC{i:02d}"
+                    marco_id = crear_carpeta(servicio, n_registro_marco, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_marco,
+                        "subcarpetas_internas_id": marco_id,
+                        "tipo": "MC",
+                        "imagenes": []
+                    })
+
+                # Subcarpetas de negativos
+                for i in range(1, cantidad_negativos + 1):
+                    n_registro_negativo = f"{n_registro_subcarpeta}-NG{i:02d}"
+                    negativo_id = crear_carpeta(servicio, n_registro_negativo, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_negativo,
+                        "subcarpetas_internas_id": negativo_id,
+                        "tipo": "NG",
+                        "imagenes": []
+                    })
+                # Subcarpetas de diapositivas
+                for i in range(1, cantidad_diapositivas + 1):
+                    n_registro_diapositivas = f"{n_registro_subcarpeta}-P{i:02d}"
+                    diapositivas_id = crear_carpeta(servicio, n_registro_diapositivas, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_diapositivas,
+                        "subcarpetas_internas_id": diapositivas_id,
+                        "tipo": "P",
+                        "imagenes": []
+                    })
+                # Subcarpetas de diapositivas
+                for i in range(1, cantidad_fotos_sueltas + 1):
+                    n_registro_fotos_sueltas = f"{n_registro_subcarpeta}-Z{i:02d}"
+                    fotos_sueltas_id = crear_carpeta(servicio, n_registro_fotos_sueltas, subcarpeta_id)
+                    subcarpeta["subcarpetas_internas"].append({
+                        "nRegistro": n_registro_fotos_sueltas,
+                        "subcarpetas_internas_id": fotos_sueltas_id,
+                        "tipo": "P",
+                        "imagenes": []
+                    })
+                                # Subcarpetas internas fijas
+                subcarpetas_fijas = ["D"]
+                for tipo_fija in subcarpetas_fijas:
+                    n_registro_fija = f"{n_registro_subcarpeta}-{tipo_fija}"
+                    subcarpeta_fija_id = crear_carpeta(servicio, n_registro_fija, subcarpeta_id)
+                    subcarpeta_interna = {
+                        "nRegistro": n_registro_fija,
+                        "subcarpetas_internas_id": subcarpeta_fija_id,
+                        "tipo": tipo_fija,
+                        "imagenes": []
+                    }
+                    subcarpeta["subcarpetas_internas"].append(subcarpeta_interna)
+
+            
             else:
                 # Inicializar como lista vacía para imágenes
                 subcarpeta = {
@@ -376,7 +478,7 @@ def subir_archivo(servicio, archivo, subcarpeta_id, nRegistro, db):
         archivo_subido = servicio.files().create(body=metadatos_archivo, media_body=media, fields='id').execute()
         archivo_id = archivo_subido.get('id')
         print(f"Archivo subido: {nombre_archivo} (ID: {archivo_id})")
-        
+
         try:
             pdf_con_timestamp = {
                 "id_pdf": archivo_id,
@@ -436,7 +538,6 @@ def subir_multiples_archivos(servicio, archivos, subcarpetas_internas_id, nRegis
 
             # Preparar el archivo para subirlo a Google Drive
             media = MediaIoBaseUpload(io.BytesIO(contenido_archivo), mimetype=mime_type)
-            # nombre_archivo =  f"{nRegistro}-{contador:03}"
             metadatos_archivo = {
                 'name': nombre_archivo,
                 'parents': [subcarpetas_internas_id]
@@ -678,7 +779,9 @@ def crear_estructura_endpoint():
         cantidad_albumes = request.args.get('cantidad_albumes', default=0, type=int)
         cantidad_marcos = request.args.get('cantidad_marcos', default=0, type=int)
         cantidad_negativos = request.args.get('cantidad_negativos', default=0, type=int)
-
+        cantidad_diapositivas = request.args.get('cantidad_diapositivas', default=0, type=int)
+        cantidad_fotos_sueltas = request.args.get('cantidad_fotos_sueltas', default=0, type=int)
+        
         archivo = request.files.get('archivo')  # Archivo adjunto (foto)
 
         if not nombre_principal:
@@ -686,7 +789,7 @@ def crear_estructura_endpoint():
 
         servicio = obtener_servicio_drive()
 
-        estructura_creada = crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos)
+        estructura_creada = crear_estructura_completa(servicio, nombre_principal, cantidad_albumes, cantidad_marcos, cantidad_negativos, cantidad_diapositivas, cantidad_fotos_sueltas)
         print("Estructura creada para MongoDB:", estructura_creada)
 
         # Obtener la subcarpeta con el nombre `nRegistro + "-F"`
